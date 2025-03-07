@@ -1,102 +1,105 @@
-from socket import *
 import random
+import math
+from socket import *
 
-# Função para realizar o teste de primalidade de Miller-Rabin
-def miller_rabin(n, k=5):
-    if n == 2 or n == 3:
-        return True
-    if n < 2 or n % 2 == 0:
+# Função para verificar se um número é primo
+def is_prime(n):
+    if n <= 1:
         return False
-    d = n - 1
-    r = 0
-    while d % 2 == 0:
-        d //= 2
-        r += 1
-    for _ in range(k):
-        a = random.randint(2, n - 2)
-        x = pow(a, d, n)
-        if x == 1 or x == n - 1:
-            continue
-        for _ in range(r - 1):
-            x = pow(x, 2, n)
-            if x == n - 1:
-                break
-        else:
+    for i in range(2, int(math.sqrt(n)) + 1):
+        if n % i == 0:
             return False
     return True
 
-def gerar_numero_primo(bits):
+# Função para gerar um número primo aleatório
+def gerar_primo():
     while True:
-        numero = random.getrandbits(bits) | 1
-        if miller_rabin(numero):
-            return numero
+        num = random.randint(2**12, 2**13)  # Número grande, mas não tão grande quanto 4096 bits
+        if is_prime(num):
+            return num
 
+# Função para calcular o MDC (Máximo Divisor Comum)
 def mdc(a, b):
-    while b != 0:
+    while b:
         a, b = b, a % b
     return a
 
+# Função para calcular o inverso modular
 def inverso_modular(a, m):
-    m0, x0, x1 = m, 0, 1
-    while a > 1:
-        q = a // m
-        m, a = a % m, m
-        x0, x1 = x1 - q * x0, x0
-    if x1 < 0:
-        x1 += m0
-    return x1
+    for i in range(2, m):
+        if (a * i) % m == 1:
+            return i
+    return None
 
-# Função para criptografar e descriptografar com RSA
-def rsa_criptografar(mensagem, chave_publica):
-    e, n = chave_publica
-    return [pow(ord(c), e, n) for c in mensagem]
+# Função para gerar as chaves pública e privada RSA
+def gerar_chaves():
+    p = gerar_primo()
+    q = gerar_primo()
 
-def rsa_descriptografar(mensagem_cripto, chave_privada):
+    while p == q:
+        q = gerar_primo()
+
+    # Calculando n e a função totiente
+    n = p * q
+    totiente = (p - 1) * (q - 1)
+
+    # Escolher e tal que 1 < e < totiente e mdc(e, totiente) = 1
+    e = 65537  # Usamos 65537 porque é um número comum e eficiente para e
+    while mdc(e, totiente) != 1:
+        e = random.randint(2, totiente)
+
+    # Calcular d tal que (e * d) % totiente = 1
+    d = inverso_modular(e, totiente)
+
+    return (e, n), (d, n)  # Retorna a chave pública (e, n) e a chave privada (d, n)
+
+# Função de decriptação RSA
+def decriptografar(mensagem_criptografada, chave_privada):
     d, n = chave_privada
-    return ''.join(chr(pow(c, d, n)) for c in mensagem_cripto)
+    return ''.join([chr(pow(char, d, n)) for char in mensagem_criptografada])
 
-# Função principal do servidor
+# Código do Servidor (Bob) com Criptografia RSA
 def servidor():
+    # Gerando chaves pública e privada
+    chave_publica, chave_privada = gerar_chaves()
+
+    # Definindo a porta do servidor
     serverPort = 1300
     serverSocket = socket(AF_INET, SOCK_STREAM)
     serverSocket.bind(("", serverPort))
     serverSocket.listen(5)
+    print("Servidor TCP (RSA) aguardando conexões na porta 1300...\n")
 
-    print("TCP Server\n")
+    # Aceitando uma conexão do cliente
     connectionSocket, addr = serverSocket.accept()
+    print(f"Conexão recebida de {addr}")
 
-    # Gerando chaves do servidor
-    bits = 64
-    p = gerar_numero_primo(bits)
-    q = gerar_numero_primo(bits)
-    n = p * q
-    phi_n = (p - 1) * (q - 1)
-    e = 65537
-    while mdc(e, phi_n) != 1:
-        e = random.randrange(2, phi_n)
-    d = inverso_modular(e, phi_n)
-    chave_publica = (e, n)
-    chave_privada = (d, n)
+    # Recebendo a chave pública do cliente
+    chave_publica_cliente = eval(str(connectionSocket.recv(65000), 'utf-8'))
+    print(f"Chave pública recebida do cliente: {chave_publica_cliente}")
 
-    # Enviando chave pública para o cliente
-    connectionSocket.send(bytes(str(chave_publica[0]), "utf-8"))
-    connectionSocket.send(bytes(str(chave_publica[1]), "utf-8"))
+    # Enviando a chave pública do servidor para o cliente
+    connectionSocket.send(str(chave_publica).encode())
+    print(f"Chave pública do servidor enviada para o cliente: {chave_publica}")
 
-    # Recebendo mensagem criptografada do cliente
-    mensagem_cripto = connectionSocket.recv(1024)
-    mensagem_cripto = [int(i) for i in mensagem_cripto.decode("utf-8").split(",")]
+    # Recebendo a mensagem criptografada do cliente
+    sentence = connectionSocket.recv(65000)
 
-    # Descriptografando a mensagem
-    mensagem_desencriptada = rsa_descriptografar(mensagem_cripto, chave_privada)
-    print("Mensagem recebida (decriptografada):", mensagem_desencriptada)
+    # Decriptografando a mensagem recebida (com a chave privada do servidor)
+    mensagem_criptografada = eval(str(sentence, 'utf-8'))
+    print(f"Mensagem Criptografada recebida do cliente: {mensagem_criptografada}")
 
-    # Processamento (exemplo: transformar a mensagem em maiúsculas)
-    mensagem_processada = mensagem_desencriptada.upper()
+    mensagem_decriptografada = decriptografar(mensagem_criptografada, chave_privada)
+    print(f"Mensagem decriptografada do cliente: {mensagem_decriptografada}")
 
-    # Criptografando a resposta
-    resposta_cripto = rsa_criptografar(mensagem_processada, chave_publica)
-    connectionSocket.send(bytes(",".join(map(str, resposta_cripto)), "utf-8"))
-    
+    # Transformando a mensagem decriptografada para maiúsculas
+    mensagem_decriptografada_upper = mensagem_decriptografada.upper()
+    print(f"Mensagem decriptografada em maiúsculas: {mensagem_decriptografada_upper}")
+
+    # Enviando a mensagem de volta ao cliente em maiúsculas
+    connectionSocket.send(mensagem_decriptografada_upper.encode())
+
+    # Fechando a conexão
     connectionSocket.close()
 
 # Executando o servidor
