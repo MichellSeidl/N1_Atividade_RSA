@@ -117,7 +117,3 @@ As chaves são trocadas entre o cliente e o servidor para que ambos possam cript
 - As chaves públicas são trocadas entre cliente e servidor, enquanto as chaves privadas são mantidas em segredo.
 - A criptografia e a descriptografia utilizam a matemática modular para garantir que a comunicação seja segura.
 - A implementação assume que tanto o cliente quanto o servidor possuem recursos para gerar números primos grandes para a geração das chaves RSA, garantindo a segurança da comunicação.
-
-## Licença
-
-Este projeto está licenciado sob a [MIT License](LICENSE).
